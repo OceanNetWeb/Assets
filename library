@@ -107,7 +107,11 @@ function ConfigSystem:GetConfigs()
 			end
 		end
 	else
-		for name, _ in pairs(self.VirtualFS) do table.insert(list, name) end
+		for name, _ in pairs(self.VirtualFS) do
+			if name ~= "__config_keybinds__" then
+				table.insert(list, name)
+			end
+		end
 	end
 	table.sort(list); return list
 end
@@ -149,6 +153,53 @@ function ConfigSystem:Delete(name)
 	else
 		self.VirtualFS[name] = nil
 	end
+end
+
+function ConfigSystem:SaveKeybinds(binds)
+	pcall(function()
+		local saveTable = {}
+		for k, v in pairs(binds) do
+			if typeof(v) == "EnumItem" then
+				saveTable[k] = v.Name
+			elseif type(v) == "string" then
+				saveTable[k] = v
+			end
+		end
+		local encoded = HttpService:JSONEncode(saveTable)
+		if hasFS then
+			EnsureFolders()
+			writefile("Ephemera/config_keybinds.json", encoded)
+		else
+			self.VirtualFS["__config_keybinds__"] = encoded
+		end
+	end)
+end
+
+function ConfigSystem:LoadKeybinds()
+	local binds = {}
+	pcall(function()
+		local raw = nil
+		if hasFS then
+			if isfile("Ephemera/config_keybinds.json") then
+				raw = readfile("Ephemera/config_keybinds.json")
+			end
+		else
+			raw = self.VirtualFS["__config_keybinds__"]
+		end
+		if raw and raw ~= "" then
+			local success, data = pcall(function() return HttpService:JSONDecode(raw) end)
+			if success and type(data) == "table" then
+				for k, v in pairs(data) do
+					if Enum.KeyCode[v] then
+						binds[k] = Enum.KeyCode[v]
+					elseif Enum.UserInputType[v] then
+						binds[k] = Enum.UserInputType[v]
+					end
+				end
+			end
+		end
+	end)
+	return binds
 end
 
 ConfigSystem:Init()
@@ -388,7 +439,11 @@ local Library = {
 	TargetFrame = nil,
 	WatermarkGui = nil,
 	KeybindsGui = nil,
-	TargetGui = nil
+	TargetGui = nil,
+	ConfigSystem = ConfigSystem,
+	ConfigKeybinds = ConfigSystem:LoadKeybinds(),
+	CurrentLoadedConfig = nil,
+	IsLoadingConfig = false
 }
 _G.Velocity_Library = Library
 
@@ -789,6 +844,243 @@ function Library:NotifyKeybindChange()
 		end)
 	end
 end
+
+function Library:GetConfigs()
+	return ConfigSystem:GetConfigs()
+end
+
+function Library:SaveKeybinds(binds)
+	self.ConfigKeybinds = binds or self.ConfigKeybinds or {}
+	ConfigSystem:SaveKeybinds(self.ConfigKeybinds)
+end
+
+function Library:LoadKeybinds()
+	self.ConfigKeybinds = ConfigSystem:LoadKeybinds()
+	return self.ConfigKeybinds
+end
+
+function Library:SaveConfig(name)
+	name = (name or ""):gsub("^%s*(.-)%s*$", "%1")
+	if name == "" then name = "Config_" .. tostring(#ConfigSystem:GetConfigs() + 1) end
+	local snapshot = {
+		Theme = self.CurrentThemeIndex,
+		ToggleKey = (typeof(self.ToggleKey) == "EnumItem") and self.ToggleKey.Name or tostring(self.ToggleKey),
+		Flags = {}
+	}
+	if self.WatermarkFrame then
+		local p = self.WatermarkFrame.Position
+		snapshot.WatermarkPos = { ScaleX = p.X.Scale, OffsetX = p.X.Offset, ScaleY = p.Y.Scale, OffsetY = p.Y.Offset }
+	end
+	if self.KeybindsFrame then
+		local p = self.KeybindsFrame.Position
+		snapshot.KeybindsPos = { ScaleX = p.X.Scale, OffsetX = p.X.Offset, ScaleY = p.Y.Scale, OffsetY = p.Y.Offset }
+	end
+	if self.TargetFrame then
+		local p = self.TargetFrame.Position
+		snapshot.TargetHUDPos = { ScaleX = p.X.Scale, OffsetX = p.X.Offset, ScaleY = p.Y.Scale, OffsetY = p.Y.Offset }
+	end
+	if self.TargetModelFrame then
+		local p = self.TargetModelFrame.Position
+		snapshot.TargetModelPos = { ScaleX = p.X.Scale, OffsetX = p.X.Offset, ScaleY = p.Y.Scale, OffsetY = p.Y.Offset }
+	end
+	if self.TargetBackpackFrame then
+		local p = self.TargetBackpackFrame.Position
+		snapshot.TargetBackpackPos = { ScaleX = p.X.Scale, OffsetX = p.X.Offset, ScaleY = p.Y.Scale, OffsetY = p.Y.Offset }
+	end
+	if self.TargetInvSections then
+		snapshot.TargetInvSectionsPos = {}
+		for secName, secFrame in pairs(self.TargetInvSections) do
+			if secFrame and secFrame.Position then
+				local p = secFrame.Position
+				snapshot.TargetInvSectionsPos[secName] = { ScaleX = p.X.Scale, OffsetX = p.X.Offset, ScaleY = p.Y.Scale, OffsetY = p.Y.Offset }
+			end
+		end
+	end
+	if self.SkinChanger and self.SkinChanger.GetSkins then
+		snapshot.SkinChanger = self.SkinChanger.GetSkins()
+	end
+	for k, v in pairs(self.Flags) do
+		if typeof(v) == "Color3" then
+			snapshot.Flags[k] = {__type = "Color3", R = math.floor(v.R * 255), G = math.floor(v.G * 255), B = math.floor(v.B * 255)}
+		elseif typeof(v) == "EnumItem" then
+			snapshot.Flags[k] = {__type = "EnumItem", Name = v.Name}
+		elseif type(v) == "table" and (v.Key ~= nil or v.Mode ~= nil or v.ParentToggleFlag ~= nil) then
+			local keyName = "Unknown"
+			if typeof(v.Key) == "EnumItem" then
+				keyName = v.Key.Name
+			elseif type(v.Key) == "string" then
+				keyName = v.Key:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
+			end
+			snapshot.Flags[k] = {
+				__type = "Keybind",
+				Key = keyName,
+				Mode = tostring(v.Mode or "Toggle"),
+				Active = (v.Active == true),
+				ParentToggleFlag = v.ParentToggleFlag,
+				Name = v.Name
+			}
+		elseif type(v) == "table" and (v.Color or (v.R and v.G and v.B)) then
+			local c = v.Color or (v.R and Color3.fromRGB(v.R, v.G, v.B))
+			if c then
+				snapshot.Flags[k] = {__type = "Color3", R = math.floor(c.R * 255), G = math.floor(c.G * 255), B = math.floor(c.B * 255), Alpha = v.Alpha, Mode = v.Mode, Speed = v.Speed}
+			end
+		else
+			snapshot.Flags[k] = v
+		end
+	end
+	ConfigSystem:Save(name, snapshot)
+	self.CurrentLoadedConfig = name
+	return snapshot
+end
+
+function Library:ApplyLoadedConfig(cfg)
+	if not cfg or type(cfg) ~= "table" then return end
+	self.IsLoadingConfig = true
+	local success, err = pcall(function()
+		if cfg.Theme then
+			self:SetTheme(cfg.Theme)
+		end
+		if cfg.ToggleKey then
+			local tk = Enum.KeyCode[cfg.ToggleKey] or Enum.UserInputType[cfg.ToggleKey]
+			if tk then
+				self.ToggleKey = tk
+				if self.ControlSetters["Menu_Keybind"] then
+					self.ControlSetters["Menu_Keybind"](self.ToggleKey)
+				end
+			end
+		end
+		if cfg.WatermarkPos and self.WatermarkFrame then
+			local wp = cfg.WatermarkPos
+			self.WatermarkFrame.Position = UDim2.new(wp.ScaleX or 0.5, wp.OffsetX or -315, wp.ScaleY or 0.5, wp.OffsetY or -238)
+		end
+		if cfg.KeybindsPos and self.KeybindsFrame then
+			local kp = cfg.KeybindsPos
+			self.KeybindsFrame.Position = UDim2.new(kp.ScaleX or 0.5, kp.OffsetX or 327, kp.ScaleY or 0.5, kp.OffsetY or -230)
+		end
+		if cfg.TargetHUDPos and self.TargetFrame then
+			local tp = cfg.TargetHUDPos
+			self.TargetFrame.Position = UDim2.new(tp.ScaleX or 0.5, tp.OffsetX or -325, tp.ScaleY or 0.5, tp.OffsetY or -238)
+		end
+		if cfg.TargetModelPos and self.TargetModelFrame then
+			local mp = cfg.TargetModelPos
+			self.TargetModelFrame.Position = UDim2.new(mp.ScaleX or 0.5, mp.OffsetX or -325, mp.ScaleY or 0.5, mp.OffsetY or -230)
+		end
+		if cfg.TargetBackpackPos and self.TargetBackpackFrame then
+			local bp = cfg.TargetBackpackPos
+			self.TargetBackpackFrame.Position = UDim2.new(bp.ScaleX or 0.5, bp.OffsetX or -572, bp.ScaleY or 0.5, bp.OffsetY or 68)
+		end
+		if cfg.TargetInvSectionsPos and self.TargetInvSections then
+			for secName, sp in pairs(cfg.TargetInvSectionsPos) do
+				local secFrame = self.TargetInvSections[secName]
+				if secFrame and type(sp) == "table" then
+					secFrame.Position = UDim2.new(sp.ScaleX or 0.5, sp.OffsetX or -572, sp.ScaleY or 0.5, sp.OffsetY or -230)
+				end
+			end
+		end
+		local flags = cfg.Flags or cfg
+		local parsedFlags = {}
+		local toggleFlags = {}
+		local keybindFlags = {}
+		local otherFlags = {}
+		for flag, val in pairs(flags) do
+			local processedVal = val
+			if type(val) == "table" then
+				local t = val.__type
+				if t == "Color3" or (val.R and val.G and val.B and val.Key == nil and val.Mode == nil and val.ParentToggleFlag == nil) then
+					processedVal = Color3.fromRGB(val.R or 255, val.G or 255, val.B or 255)
+				elseif t == "EnumItem" then
+					processedVal = Enum.KeyCode[val.Name] or Enum.UserInputType[val.Name] or Enum.KeyCode.Unknown
+				elseif t == "Keybind" or val.Key ~= nil or val.Mode ~= nil or val.ParentToggleFlag ~= nil then
+					local kStr = tostring(val.Key or ""):gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
+					local parsedKey = Enum.KeyCode[kStr] or Enum.UserInputType[kStr] or Enum.KeyCode.Unknown
+					processedVal = {
+						Key = parsedKey,
+						Mode = tostring(val.Mode or "Toggle"),
+						Active = (val.Active == true),
+						ParentToggleFlag = val.ParentToggleFlag,
+						Name = val.Name
+					}
+				end
+			end
+			parsedFlags[flag] = processedVal
+			self.Flags[flag] = processedVal
+			if type(processedVal) == "table" and (processedVal.Key ~= nil or processedVal.Mode ~= nil or processedVal.ParentToggleFlag ~= nil) then
+				table.insert(keybindFlags, flag)
+			elseif type(processedVal) == "boolean" then
+				table.insert(toggleFlags, flag)
+			else
+				table.insert(otherFlags, flag)
+			end
+		end
+		for i = 1, #toggleFlags do
+			local f = toggleFlags[i]
+			local setter = self.ControlSetters[f]
+			if setter then setter(parsedFlags[f]) end
+		end
+		for i = 1, #keybindFlags do
+			local f = keybindFlags[i]
+			local setter = self.ControlSetters[f]
+			if setter then setter(parsedFlags[f]) end
+		end
+		for i = 1, #otherFlags do
+			local f = otherFlags[i]
+			local setter = self.ControlSetters[f]
+			if setter then setter(parsedFlags[f]) end
+		end
+		if self.SkinChanger and self.SkinChanger.ApplySkins then
+			self.SkinChanger.ApplySkins(cfg.SkinChanger or {})
+		end
+		self:NotifyKeybindChange()
+	end)
+	self.IsLoadingConfig = false
+	if not success and err then
+		warn("[Config Load Error]:", err)
+	end
+end
+
+function Library:LoadConfig(name)
+	local cfg = ConfigSystem:Load(name)
+	if cfg then
+		self.CurrentLoadedConfig = name
+		self:ApplyLoadedConfig(cfg)
+		return cfg
+	end
+	return nil
+end
+
+function Library:DeleteConfig(name)
+	if self.ConfigKeybinds and self.ConfigKeybinds[name] then
+		self.ConfigKeybinds[name] = nil
+		ConfigSystem:SaveKeybinds(self.ConfigKeybinds)
+	end
+	if self.CurrentLoadedConfig == name then
+		self.CurrentLoadedConfig = nil
+	end
+	ConfigSystem:Delete(name)
+end
+
+-- Global Config Keybind listener
+local globalCfgKeyConn = UserInputService.InputBegan:Connect(function(input, gpe)
+	if not gpe and not Library.IsLoadingConfig then
+		if Library.IsOpen and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2) then return end
+		local binds = Library.ConfigKeybinds
+		if binds then
+			for cfgName, boundKey in pairs(binds) do
+				if boundKey and boundKey ~= Enum.KeyCode.Unknown and (input.KeyCode == boundKey or input.UserInputType == boundKey) then
+					if Library.CurrentLoadedConfig == cfgName then
+						Library:Notify({ Text = "config [ " .. cfgName .. " ] is already loaded", Icon = Library.Icons and Library.Icons.Alert or "rbxassetid://6031075931", Duration = 2.5 })
+					else
+						local loaded = Library:LoadConfig(cfgName)
+						if loaded then
+							Library:Notify({ Text = "loaded config [ " .. cfgName .. " ]", Icon = Library.Icons and (Library.Icons.FolderInput or Library.Icons.Check) or "rbxassetid://6031075931", Duration = 3.5 })
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+GarbageCollector:AddConnection(globalCfgKeyConn)
 
 local function MakeDraggable(dragBar, targetFrame)
 	local dragging = false
