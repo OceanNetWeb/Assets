@@ -2736,12 +2736,8 @@ function Library:CreateWindow(config)
 							Tween(CheckIcon, 0.18, { Size = UDim2.fromOffset(18, 18), ImageTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 							Tween(Label, 0.2, { TextColor3 = th.TextDim })
 						end
-						if not silent then
-							if attachedKeybindState and attachedKeybindState.Update then
-								attachedKeybindState.Update()
-							else
-								TriggerCallback()
-							end
+						if attachedKeybindState and attachedKeybindState.Update then
+							attachedKeybindState.Update()
 						else
 							TriggerCallback()
 						end
@@ -3161,15 +3157,12 @@ function Library:CreateWindow(config)
 							Library.Flags[kbFlag].Key = key
 							Library.Flags[kbFlag].ParentToggleFlag = flag
 							Library.Flags[kbFlag].Name = name
-							if not Library.IsLoadingConfig then
-								TriggerCallback()
-								kbCallback(key, active, mode)
-							end
+							TriggerCallback()
+							kbCallback(key, active, mode)
 							Library:NotifyKeybindChange()
 						end
 
 						attachedKeybindState.Update = function()
-							if Library.IsLoadingConfig then return end
 							if not masterEnabled then
 								isToggledActive = false
 								isHolding = false
@@ -3476,13 +3469,23 @@ function Library:CreateWindow(config)
 								if data.Key then
 									if typeof(data.Key) == "EnumItem" then
 										key = data.Key
-									elseif type(data.Key) == "string" and Enum.KeyCode[data.Key] then
-										key = Enum.KeyCode[data.Key]
+									elseif type(data.Key) == "string" then
+										if Enum.KeyCode[data.Key] then
+											key = Enum.KeyCode[data.Key]
+										elseif Enum.UserInputType[data.Key] then
+											key = Enum.UserInputType[data.Key]
+										else
+											key = Enum.KeyCode.Unknown
+										end
 									end
 								end
 								if data.Mode then mode = data.Mode end
 								if mode == "Toggle" then
-									isToggledActive = false
+									if data.Active ~= nil then
+										isToggledActive = (data.Active == true) and masterEnabled
+									else
+										isToggledActive = false
+									end
 								elseif mode == "Always" then
 									isToggledActive = masterEnabled
 								elseif mode == "Hold" then
@@ -3490,10 +3493,16 @@ function Library:CreateWindow(config)
 								end
 							elseif typeof(data) == "EnumItem" then
 								key = data
-								if mode == "Toggle" then isToggledActive = false elseif mode == "Hold" then isHolding = false end
-							elseif type(data) == "string" and Enum.KeyCode[data] then
-								key = Enum.KeyCode[data]
-								if mode == "Toggle" then isToggledActive = false elseif mode == "Hold" then isHolding = false end
+								if mode == "Toggle" then isToggledActive = false elseif mode == "Always" then isToggledActive = masterEnabled elseif mode == "Hold" then isHolding = false end
+							elseif type(data) == "string" then
+								if Enum.KeyCode[data] then
+									key = Enum.KeyCode[data]
+								elseif Enum.UserInputType[data] then
+									key = Enum.UserInputType[data]
+								else
+									key = Enum.KeyCode.Unknown
+								end
+								if mode == "Toggle" then isToggledActive = false elseif mode == "Always" then isToggledActive = masterEnabled elseif mode == "Hold" then isHolding = false end
 							end
 							
 							UpdateKeyDisplay(FormatKey(key), false)
