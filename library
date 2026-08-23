@@ -7818,3 +7818,6 @@ function Library:Notify(config, duration)
 
 	return resultToast
 end
+
+
+return Library
