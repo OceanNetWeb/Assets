@@ -3466,20 +3466,23 @@ function Library:CreateWindow(config)
 
 						Library.ControlSetters[kbFlag] = function(data)
 							if type(data) == "table" then
-								if data.Key then
+								if data.Key ~= nil then
 									if typeof(data.Key) == "EnumItem" then
 										key = data.Key
 									elseif type(data.Key) == "string" then
-										if Enum.KeyCode[data.Key] then
-											key = Enum.KeyCode[data.Key]
-										elseif Enum.UserInputType[data.Key] then
-											key = Enum.UserInputType[data.Key]
+										local kStr = data.Key:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
+										if Enum.KeyCode[kStr] then
+											key = Enum.KeyCode[kStr]
+										elseif Enum.UserInputType[kStr] then
+											key = Enum.UserInputType[kStr]
 										else
 											key = Enum.KeyCode.Unknown
 										end
 									end
 								end
-								if data.Mode then mode = data.Mode end
+								if data.Mode then
+									mode = tostring(data.Mode)
+								end
 								if mode == "Toggle" then
 									if data.Active ~= nil then
 										isToggledActive = (data.Active == true) and masterEnabled
@@ -3495,10 +3498,11 @@ function Library:CreateWindow(config)
 								key = data
 								if mode == "Toggle" then isToggledActive = false elseif mode == "Always" then isToggledActive = masterEnabled elseif mode == "Hold" then isHolding = false end
 							elseif type(data) == "string" then
-								if Enum.KeyCode[data] then
-									key = Enum.KeyCode[data]
-								elseif Enum.UserInputType[data] then
-									key = Enum.UserInputType[data]
+								local kStr = data:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
+								if Enum.KeyCode[kStr] then
+									key = Enum.KeyCode[kStr]
+								elseif Enum.UserInputType[kStr] then
+									key = Enum.UserInputType[kStr]
 								else
 									key = Enum.KeyCode.Unknown
 								end
@@ -3876,8 +3880,22 @@ function Library:CreateWindow(config)
 					local function SetKey(newKey)
 						if typeof(newKey) == "EnumItem" then
 							key = newKey
-						elseif type(newKey) == "string" and Enum.KeyCode[newKey] then
-							key = Enum.KeyCode[newKey]
+						elseif type(newKey) == "string" then
+							local kStr = newKey:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
+							if Enum.KeyCode[kStr] then
+								key = Enum.KeyCode[kStr]
+							elseif Enum.UserInputType[kStr] then
+								key = Enum.UserInputType[kStr]
+							else
+								key = Enum.KeyCode.Unknown
+							end
+						elseif type(newKey) == "table" and newKey.Key then
+							if typeof(newKey.Key) == "EnumItem" then
+								key = newKey.Key
+							elseif type(newKey.Key) == "string" then
+								local kStr = newKey.Key:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
+								key = Enum.KeyCode[kStr] or Enum.UserInputType[kStr] or Enum.KeyCode.Unknown
+							end
 						end
 						Library.Flags[flag] = key
 						UpdateKeyDisplay(FormatKey(key), false)
