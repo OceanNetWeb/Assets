@@ -243,7 +243,6 @@ ConfigSystem:Init()
 
 local FontManager = {
 	FileName = "Ephemera/Fonts/SF-Pro-Display-Regular.ttf",
-	JsonName = "Ephemera/Fonts/sf_pro.json",
 	Url = "https://github.com/akucursed/z/raw/refs/heads/main/SF-Pro-Display-Regular.ttf",
 	CustomAssetId = nil,
 	FontFaceRegular = nil,
@@ -251,12 +250,50 @@ local FontManager = {
 	FontFaceBold = nil,
 	FallbackRegular = Enum.Font.Gotham,
 	FallbackMedium = Enum.Font.GothamMedium,
-	FallbackBold = Enum.Font.GothamBold,
-	ESPFont = nil
+	FallbackBold = Enum.Font.GothamBold
 }
 
--- Load Custom ESP Font (SmallestPixel7 / FontFace)
-local function GetESPFont()
+do
+	local getAsset = getcustomasset or (syn and syn.custom_asset) or getsynasset
+	local hasWrite = (writefile and readfile and isfile) ~= nil
+
+	EnsureFolders()
+
+	if hasWrite and getAsset then
+		pcall(function()
+			if not isfile(FontManager.FileName) then
+				local fontData = game:HttpGet(FontManager.Url)
+				if fontData and #fontData > 0 then
+					writefile(FontManager.FileName, fontData)
+				end
+			end
+			if isfile(FontManager.FileName) then
+				FontManager.CustomAssetId = getAsset(FontManager.FileName)
+			end
+		end)
+	end
+
+	if FontManager.CustomAssetId then
+		pcall(function()
+			FontManager.FontFaceRegular = Font.new(FontManager.CustomAssetId, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+			FontManager.FontFaceMedium = Font.new(FontManager.CustomAssetId, Enum.FontWeight.Medium, Enum.FontStyle.Normal)
+			FontManager.FontFaceBold = Font.new(FontManager.CustomAssetId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+		end)
+	end
+end
+
+local function ApplyFont(obj, style)
+	if not obj then return end
+	style = style or "Medium"
+	if FontManager.CustomAssetId and FontManager.FontFaceRegular then
+		obj.FontFace = (style == "Bold" and FontManager.FontFaceBold) or ((style == "Medium" or style == "SemiBold") and FontManager.FontFaceMedium) or FontManager.FontFaceRegular
+	else
+		obj.Font = (style == "Bold" and FontManager.FallbackBold) or (style == "Regular" and FontManager.FallbackRegular) or FontManager.FallbackMedium
+	end
+end
+
+-- Load Custom ESP Font (SmallestPixel7 / FontFace from airdrop_visualizer.lua)
+local function getfont()
 	local ttfPath = "Ephemera/Fonts/smallest_pixel.ttf"
 	local jsonPath = "Ephemera/Fonts/smallest_pixel.json"
 	local getAsset = getcustomasset or (syn and syn.custom_asset) or getsynasset
@@ -294,87 +331,36 @@ local function GetESPFont()
 		if success and font then return font end
 	end
 
-	if FontManager and FontManager.FontFaceMedium then return FontManager.FontFaceMedium end
 	return Font.fromEnum(Enum.Font.GothamMedium)
-end
-
-do
-	local getAsset = getcustomasset or (syn and syn.custom_asset) or getsynasset
-	local hasWrite = (writefile and readfile and isfile) ~= nil
-
-	EnsureFolders()
-
-	if hasWrite and getAsset then
-		pcall(function()
-			if not isfile(FontManager.FileName) then
-				local fontData = game:HttpGet(FontManager.Url)
-				if fontData and #fontData > 0 then
-					writefile(FontManager.FileName, fontData)
-				end
-			end
-			if isfile(FontManager.FileName) and not isfile(FontManager.JsonName) then
-				local fontData = {
-					name = "SFProDisplay",
-					faces = {
-						{ name = "Regular", weight = 400, style = "normal", assetId = getAsset(FontManager.FileName) },
-						{ name = "Medium", weight = 500, style = "normal", assetId = getAsset(FontManager.FileName) },
-						{ name = "Bold", weight = 700, style = "normal", assetId = getAsset(FontManager.FileName) }
-					}
-				}
-				writefile(FontManager.JsonName, HttpService:JSONEncode(fontData))
-			end
-			if isfile(FontManager.JsonName) then
-				FontManager.CustomAssetId = getAsset(FontManager.JsonName)
-			end
-		end)
-	end
-
-	if FontManager.CustomAssetId then
-		pcall(function()
-			FontManager.FontFaceRegular = Font.new(FontManager.CustomAssetId, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-			FontManager.FontFaceMedium = Font.new(FontManager.CustomAssetId, Enum.FontWeight.Medium, Enum.FontStyle.Normal)
-			FontManager.FontFaceBold = Font.new(FontManager.CustomAssetId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-		end)
-	end
-
-	FontManager.ESPFont = GetESPFont()
-end
-
-local function ApplyFont(obj, style)
-	if not obj then return end
-	style = style or "Medium"
-	if FontManager.CustomAssetId and FontManager.FontFaceRegular then
-		obj.FontFace = (style == "Bold" and FontManager.FontFaceBold) or ((style == "Medium" or style == "SemiBold") and FontManager.FontFaceMedium) or FontManager.FontFaceRegular
-	else
-		obj.Font = (style == "Bold" and FontManager.FallbackBold) or (style == "Regular" and FontManager.FallbackRegular) or FontManager.FallbackMedium
-	end
 end
 
 local function ApplyESPFont(obj, size)
 	if not obj then return end
-	local espFont = FontManager.ESPFont or GetESPFont()
-	if espFont then
-		pcall(function()
-			obj.FontFace = espFont
-		end)
-	end
+	local espFont = getfont()
+	pcall(function()
+		obj.FontFace = espFont
+	end)
 	if size and (obj:IsA("TextLabel") or obj:IsA("TextBox") or obj:IsA("TextButton")) then
 		obj.TextSize = size
 	end
+	if obj:IsA("TextLabel") or obj:IsA("TextBox") or obj:IsA("TextButton") then
+		local stroke = obj:FindFirstChildOfClass("UIStroke")
+		if not stroke then
+			stroke = Instance.new("UIStroke")
+			stroke.Thickness = 1
+			stroke.Color = Color3.fromRGB(0, 0, 0)
+			stroke.Parent = obj
+		end
+	end
 end
-
-FontManager.GetESPFont = GetESPFont
-FontManager.getfont = GetESPFont
-FontManager.ApplyESPFont = ApplyESPFont
 
 local Library = {
 	FontManager = FontManager,
 	ApplyFont = ApplyFont,
 	ApplyESPFont = ApplyESPFont,
-	GetESPFont = GetESPFont,
-	GetFont = GetESPFont,
-	getfont = GetESPFont,
-	ESPFont = FontManager.ESPFont,
+	GetESPFont = getfont,
+	getfont = getfont,
+	ESPFont = getfont(),
 	ParseKey = ParseKey,
 	FormatKey = FormatKey,
 	Themes = {
