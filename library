@@ -334,33 +334,49 @@ local function getfont()
 	return Font.fromEnum(Enum.Font.GothamMedium)
 end
 
+local espCustomFont = getfont()
+
 local function ApplyESPFont(obj, size)
 	if not obj then return end
-	local espFont = getfont()
-	pcall(function()
-		obj.FontFace = espFont
-	end)
+	if espCustomFont then
+		pcall(function()
+			obj.FontFace = espCustomFont
+		end)
+	end
 	if size and (obj:IsA("TextLabel") or obj:IsA("TextBox") or obj:IsA("TextButton")) then
 		obj.TextSize = size
 	end
-	if obj:IsA("TextLabel") or obj:IsA("TextBox") or obj:IsA("TextButton") then
-		local stroke = obj:FindFirstChildOfClass("UIStroke")
-		if not stroke then
-			stroke = Instance.new("UIStroke")
-			stroke.Thickness = 1
-			stroke.Color = Color3.fromRGB(0, 0, 0)
-			stroke.Parent = obj
-		end
-	end
+end
+
+local function CreateESPLabel(name, parent, size)
+	local label = Instance.new("TextLabel")
+	label.Name = name or "ESP_Label"
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextSize = size or 8
+	label.FontFace = espCustomFont
+	label.Visible = false
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Size = UDim2.new(0, 100, 0, 12)
+	if parent then label.Parent = parent end
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 1
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Parent = label
+	return label
 end
 
 local Library = {
 	FontManager = FontManager,
 	ApplyFont = ApplyFont,
 	ApplyESPFont = ApplyESPFont,
+	CreateESPLabel = CreateESPLabel,
 	GetESPFont = getfont,
+	GetFont = getfont,
 	getfont = getfont,
-	ESPFont = getfont(),
+	ESPFont = espCustomFont,
 	ParseKey = ParseKey,
 	FormatKey = FormatKey,
 	Themes = {
