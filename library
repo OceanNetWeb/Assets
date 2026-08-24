@@ -3469,7 +3469,7 @@ function Library:CreateWindow(config)
 						local modesList = { "Always", "Hold", "Toggle" }
 						local modeElements = {}
 
-						local function UpdateKeybindRuntime()
+						local function UpdateKeybindRuntime(isFromInput)
 							local active = GetRuntimeActive()
 							if type(Library.Flags[kbFlag]) ~= "table" then
 								Library.Flags[kbFlag] = {}
@@ -3481,7 +3481,9 @@ function Library:CreateWindow(config)
 							Library.Flags[kbFlag].Name = name
 							Library.Flags[kbFlag].Badge = (mode == "Button") and "button" or nil
 							TriggerCallback()
-							kbCallback(key, active, mode)
+							if isFromInput then
+								kbCallback(key, active, mode)
+							end
 							Library:NotifyKeybindChange()
 						end
 
