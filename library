@@ -993,12 +993,18 @@ function Library:ApplyLoadedConfig(cfg)
 				elseif t == "Keybind" or val.Key ~= nil or val.Mode ~= nil or val.ParentToggleFlag ~= nil then
 					local kStr = tostring(val.Key or ""):gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
 					local parsedKey = Enum.KeyCode[kStr] or Enum.UserInputType[kStr] or Enum.KeyCode.Unknown
+					local parsedMode = tostring(val.Mode or "Toggle")
+					if flag == "Underground_Resolver_Key" then
+						parsedMode = "Button"
+						if parsedKey == Enum.KeyCode.Unknown then parsedKey = Enum.KeyCode.P end
+					end
 					processedVal = {
 						Key = parsedKey,
-						Mode = tostring(val.Mode or "Toggle"),
+						Mode = parsedMode,
 						Active = (val.Active == true),
 						ParentToggleFlag = val.ParentToggleFlag,
-						Name = val.Name
+						Name = val.Name,
+						Badge = (parsedMode == "Button") and "button" or nil
 					}
 				end
 			end
