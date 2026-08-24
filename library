@@ -155,6 +155,44 @@ function ConfigSystem:Delete(name)
 	end
 end
 
+local function ParseKey(v)
+	if not v then return Enum.KeyCode.Unknown end
+	if typeof(v) == "EnumItem" then return v end
+	local str = tostring(v):gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", ""):gsub("^KeyCode%.", ""):gsub("^UserInputType%.", "")
+	if str == "" or str == "Unknown" or str == "None" or str == "-" then
+		return Enum.KeyCode.Unknown
+	end
+	local ok1, key = pcall(function() return Enum.KeyCode[str] end)
+	if ok1 and key then return key end
+	local ok2, inputType = pcall(function() return Enum.UserInputType[str] end)
+	if ok2 and inputType then return inputType end
+	return Enum.KeyCode.Unknown
+end
+
+local function FormatKey(k)
+	local parsed = ParseKey(k)
+	if not parsed or parsed == Enum.KeyCode.Unknown then return "-" end
+	if parsed.EnumType == Enum.KeyCode then
+		local str = parsed.Name:upper()
+		if str == "RIGHTALT" then return "RALT" end
+		if str == "LEFTALT" then return "LALT" end
+		if str == "RIGHTCONTROL" then return "RCTRL" end
+		if str == "LEFTCONTROL" then return "LCTRL" end
+		if str == "RIGHTSHIFT" then return "RSHIFT" end
+		if str == "LEFTSHIFT" then return "LSHIFT" end
+		if str == "CAPSLOCK" then return "CAPS" end
+		return str
+	elseif parsed.EnumType == Enum.UserInputType then
+		if parsed == Enum.UserInputType.MouseButton1 then return "M1" end
+		if parsed == Enum.UserInputType.MouseButton2 then return "M2" end
+		if parsed == Enum.UserInputType.MouseButton3 then return "M3" end
+		if parsed == Enum.UserInputType.MouseButton4 then return "M4" end
+		if parsed == Enum.UserInputType.MouseButton5 then return "M5" end
+		return parsed.Name:upper()
+	end
+	return "-"
+end
+
 function ConfigSystem:SaveKeybinds(binds)
 	pcall(function()
 		local saveTable = {}
@@ -190,10 +228,9 @@ function ConfigSystem:LoadKeybinds()
 			local success, data = pcall(function() return HttpService:JSONDecode(raw) end)
 			if success and type(data) == "table" then
 				for k, v in pairs(data) do
-					if Enum.KeyCode[v] then
-						binds[k] = Enum.KeyCode[v]
-					elseif Enum.UserInputType[v] then
-						binds[k] = Enum.UserInputType[v]
+					local parsed = ParseKey(v)
+					if parsed and parsed ~= Enum.KeyCode.Unknown then
+						binds[k] = parsed
 					end
 				end
 			end
@@ -206,6 +243,7 @@ ConfigSystem:Init()
 
 local FontManager = {
 	FileName = "Ephemera/Fonts/SF-Pro-Display-Regular.ttf",
+	JsonName = "Ephemera/Fonts/sf_pro.json",
 	Url = "https://github.com/akucursed/z/raw/refs/heads/main/SF-Pro-Display-Regular.ttf",
 	CustomAssetId = nil,
 	FontFaceRegular = nil,
@@ -213,8 +251,52 @@ local FontManager = {
 	FontFaceBold = nil,
 	FallbackRegular = Enum.Font.Gotham,
 	FallbackMedium = Enum.Font.GothamMedium,
-	FallbackBold = Enum.Font.GothamBold
+	FallbackBold = Enum.Font.GothamBold,
+	ESPFont = nil
 }
+
+-- Load Custom ESP Font (SmallestPixel7 / FontFace)
+local function GetESPFont()
+	local ttfPath = "Ephemera/Fonts/smallest_pixel.ttf"
+	local jsonPath = "Ephemera/Fonts/smallest_pixel.json"
+	local getAsset = getcustomasset or (syn and syn.custom_asset) or getsynasset
+	local hasFS = (writefile and readfile and isfile) ~= nil
+
+	pcall(function()
+		if typeof(makefolder) == "function" and typeof(isfolder) == "function" then
+			if not isfolder("Ephemera") then makefolder("Ephemera") end
+			if not isfolder("Ephemera/Fonts") then makefolder("Ephemera/Fonts") end
+		end
+	end)
+
+	if hasFS and getAsset then
+		pcall(function()
+			if not isfile(ttfPath) and (type(game.HttpGet) == "function" or typeof(game.HttpGet) == "function") then
+				local data = game:HttpGet("https://github.com/Enterium/Enterium/raw/main/smallest_pixel-7.ttf")
+				if type(data) == "string" and #data > 0 then
+					writefile(ttfPath, data)
+				end
+			end
+			if isfile(ttfPath) and not isfile(jsonPath) then
+				local fontData = {
+					name = "SmallestPixel7",
+					faces = { { name = "Regular", weight = 400, style = "normal", assetId = getAsset(ttfPath) } }
+				}
+				writefile(jsonPath, HttpService:JSONEncode(fontData))
+			end
+		end)
+
+		local success, font = pcall(function()
+			if isfile(jsonPath) then
+				return Font.new(getAsset(jsonPath))
+			end
+		end)
+		if success and font then return font end
+	end
+
+	if FontManager and FontManager.FontFaceMedium then return FontManager.FontFaceMedium end
+	return Font.fromEnum(Enum.Font.GothamMedium)
+end
 
 do
 	local getAsset = getcustomasset or (syn and syn.custom_asset) or getsynasset
@@ -230,8 +312,19 @@ do
 					writefile(FontManager.FileName, fontData)
 				end
 			end
-			if isfile(FontManager.FileName) then
-				FontManager.CustomAssetId = getAsset(FontManager.FileName)
+			if isfile(FontManager.FileName) and not isfile(FontManager.JsonName) then
+				local fontData = {
+					name = "SFProDisplay",
+					faces = {
+						{ name = "Regular", weight = 400, style = "normal", assetId = getAsset(FontManager.FileName) },
+						{ name = "Medium", weight = 500, style = "normal", assetId = getAsset(FontManager.FileName) },
+						{ name = "Bold", weight = 700, style = "normal", assetId = getAsset(FontManager.FileName) }
+					}
+				}
+				writefile(FontManager.JsonName, HttpService:JSONEncode(fontData))
+			end
+			if isfile(FontManager.JsonName) then
+				FontManager.CustomAssetId = getAsset(FontManager.JsonName)
 			end
 		end)
 	end
@@ -243,6 +336,8 @@ do
 			FontManager.FontFaceBold = Font.new(FontManager.CustomAssetId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
 		end)
 	end
+
+	FontManager.ESPFont = GetESPFont()
 end
 
 local function ApplyFont(obj, style)
@@ -255,9 +350,33 @@ local function ApplyFont(obj, style)
 	end
 end
 
+local function ApplyESPFont(obj, size)
+	if not obj then return end
+	local espFont = FontManager.ESPFont or GetESPFont()
+	if espFont then
+		pcall(function()
+			obj.FontFace = espFont
+		end)
+	end
+	if size and (obj:IsA("TextLabel") or obj:IsA("TextBox") or obj:IsA("TextButton")) then
+		obj.TextSize = size
+	end
+end
+
+FontManager.GetESPFont = GetESPFont
+FontManager.getfont = GetESPFont
+FontManager.ApplyESPFont = ApplyESPFont
+
 local Library = {
 	FontManager = FontManager,
 	ApplyFont = ApplyFont,
+	ApplyESPFont = ApplyESPFont,
+	GetESPFont = GetESPFont,
+	GetFont = GetESPFont,
+	getfont = GetESPFont,
+	ESPFont = FontManager.ESPFont,
+	ParseKey = ParseKey,
+	FormatKey = FormatKey,
 	Themes = {
 		[1] = { -- Periwinkle (Default Velocity CS2 Theme)
 			Name = "Periwinkle",
@@ -909,7 +1028,7 @@ function Library:SaveConfig(name)
 			if typeof(v.Key) == "EnumItem" then
 				keyName = v.Key.Name
 			elseif type(v.Key) == "string" then
-				keyName = v.Key:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
+				keyName = v.Key:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", ""):gsub("^KeyCode%.", ""):gsub("^UserInputType%.", "")
 			end
 			snapshot.Flags[k] = {
 				__type = "Keybind",
@@ -941,8 +1060,8 @@ function Library:ApplyLoadedConfig(cfg)
 			self:SetTheme(cfg.Theme)
 		end
 		if cfg.ToggleKey then
-			local tk = Enum.KeyCode[cfg.ToggleKey] or Enum.UserInputType[cfg.ToggleKey]
-			if tk then
+			local tk = ParseKey(cfg.ToggleKey)
+			if tk and tk ~= Enum.KeyCode.Unknown then
 				self.ToggleKey = tk
 				if self.ControlSetters["Menu_Keybind"] then
 					self.ControlSetters["Menu_Keybind"](self.ToggleKey)
@@ -988,11 +1107,10 @@ function Library:ApplyLoadedConfig(cfg)
 				local t = val.__type
 				if t == "Color3" or (val.R and val.G and val.B and val.Key == nil and val.Mode == nil and val.ParentToggleFlag == nil) then
 					processedVal = Color3.fromRGB(val.R or 255, val.G or 255, val.B or 255)
-				elseif t == "EnumItem" then
-					processedVal = Enum.KeyCode[val.Name] or Enum.UserInputType[val.Name] or Enum.KeyCode.Unknown
+				elseif t == "EnumItem" or (val.Name and not val.Key and not val.Mode and not val.ParentToggleFlag and not val.R) then
+					processedVal = ParseKey(val.Name)
 				elseif t == "Keybind" or val.Key ~= nil or val.Mode ~= nil or val.ParentToggleFlag ~= nil then
-					local kStr = tostring(val.Key or ""):gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
-					local parsedKey = Enum.KeyCode[kStr] or Enum.UserInputType[kStr] or Enum.KeyCode.Unknown
+					local parsedKey = ParseKey(val.Key)
 					processedVal = {
 						Key = parsedKey,
 						Mode = tostring(val.Mode or "Toggle"),
@@ -1001,6 +1119,8 @@ function Library:ApplyLoadedConfig(cfg)
 						Name = val.Name
 					}
 				end
+			elseif typeof(val) == "EnumItem" then
+				processedVal = val
 			end
 			parsedFlags[flag] = processedVal
 			self.Flags[flag] = processedVal
@@ -1012,16 +1132,19 @@ function Library:ApplyLoadedConfig(cfg)
 				table.insert(otherFlags, flag)
 			end
 		end
-		for i = 1, #toggleFlags do
-			local f = toggleFlags[i]
-			local setter = self.ControlSetters[f]
-			if setter then setter(parsedFlags[f]) end
-		end
+		-- 1. Apply Keybind flags FIRST so keys and modes are populated
 		for i = 1, #keybindFlags do
 			local f = keybindFlags[i]
 			local setter = self.ControlSetters[f]
 			if setter then setter(parsedFlags[f]) end
 		end
+		-- 2. Apply Toggle flags so runtime updates see active keybinds
+		for i = 1, #toggleFlags do
+			local f = toggleFlags[i]
+			local setter = self.ControlSetters[f]
+			if setter then setter(parsedFlags[f]) end
+		end
+		-- 3. Apply all remaining controls
 		for i = 1, #otherFlags do
 			local f = otherFlags[i]
 			local setter = self.ControlSetters[f]
@@ -1066,7 +1189,8 @@ local globalCfgKeyConn = UserInputService.InputBegan:Connect(function(input, gpe
 		local binds = Library.ConfigKeybinds
 		if binds then
 			for cfgName, boundKey in pairs(binds) do
-				if boundKey and boundKey ~= Enum.KeyCode.Unknown and (input.KeyCode == boundKey or input.UserInputType == boundKey) then
+				local bKey = ParseKey(boundKey)
+				if bKey and bKey ~= Enum.KeyCode.Unknown and (input.KeyCode == bKey or input.UserInputType == bKey) then
 					if Library.CurrentLoadedConfig == cfgName then
 						Library:Notify({ Text = "config [ " .. cfgName .. " ] is already loaded", Icon = Library.Icons and Library.Icons.Alert or "rbxassetid://6031075931", Duration = 2.5 })
 					else
@@ -3283,7 +3407,7 @@ function Library:CreateWindow(config)
 					function ToggleApi:AddKeybind(kbConfig)
 						kbConfig = kbConfig or {}
 						local kbFlag = kbConfig.Flag or (flag .. "_Key")
-						local kbDefault = kbConfig.Default or Enum.KeyCode.Unknown
+						local kbDefault = ParseKey(kbConfig.Default or Enum.KeyCode.Unknown)
 						local kbMode = kbConfig.Mode or "Toggle"
 						local kbCallback = kbConfig.Callback or function() end
 
@@ -3292,29 +3416,6 @@ function Library:CreateWindow(config)
 						local isHolding = false
 						local isToggledActive = (mode == "Always") and masterEnabled or false
 						local listening = false
-
-						local function FormatKey(k)
-							if not k or k == Enum.KeyCode.Unknown then return "-" end
-							if typeof(k) == "EnumItem" then
-								if k.EnumType == Enum.KeyCode then
-									local str = k.Name:upper()
-									if str == "RIGHTALT" then return "RALT" end
-									if str == "LEFTALT" then return "LALT" end
-									if str == "RIGHTCONTROL" then return "RCTRL" end
-									if str == "LEFTCONTROL" then return "LCTRL" end
-									if str == "RIGHTSHIFT" then return "RSHIFT" end
-									if str == "LEFTSHIFT" then return "LSHIFT" end
-									if str == "CAPSLOCK" then return "CAPS" end
-									return str
-								elseif k.EnumType == Enum.UserInputType then
-									if k == Enum.UserInputType.MouseButton1 then return "M1" end
-									if k == Enum.UserInputType.MouseButton2 then return "M2" end
-									if k == Enum.UserInputType.MouseButton3 then return "M3" end
-								end
-							end
-							local s = tostring(k):gsub("Enum%.KeyCode%.", ""):gsub("Enum%.UserInputType%.", ""):upper()
-							return (s ~= "" and s ~= "UNKNOWN") and s or "-"
-						end
 
 						local function GetRuntimeActive()
 							if not masterEnabled then return false end
@@ -3759,18 +3860,7 @@ function Library:CreateWindow(config)
 						Library.ControlSetters[kbFlag] = function(data)
 							if type(data) == "table" then
 								if data.Key ~= nil then
-									if typeof(data.Key) == "EnumItem" then
-										key = data.Key
-									elseif type(data.Key) == "string" then
-										local kStr = data.Key:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
-										if Enum.KeyCode[kStr] then
-											key = Enum.KeyCode[kStr]
-										elseif Enum.UserInputType[kStr] then
-											key = Enum.UserInputType[kStr]
-										else
-											key = Enum.KeyCode.Unknown
-										end
-									end
+									key = ParseKey(data.Key)
 								end
 								if data.Mode then
 									mode = tostring(data.Mode)
@@ -3786,18 +3876,8 @@ function Library:CreateWindow(config)
 								elseif mode == "Hold" then
 									isHolding = false
 								end
-							elseif typeof(data) == "EnumItem" then
-								key = data
-								if mode == "Toggle" then isToggledActive = false elseif mode == "Always" then isToggledActive = masterEnabled elseif mode == "Hold" then isHolding = false end
-							elseif type(data) == "string" then
-								local kStr = data:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
-								if Enum.KeyCode[kStr] then
-									key = Enum.KeyCode[kStr]
-								elseif Enum.UserInputType[kStr] then
-									key = Enum.UserInputType[kStr]
-								else
-									key = Enum.KeyCode.Unknown
-								end
+							elseif typeof(data) == "EnumItem" or type(data) == "string" then
+								key = ParseKey(data)
 								if mode == "Toggle" then isToggledActive = false elseif mode == "Always" then isToggledActive = masterEnabled elseif mode == "Hold" then isHolding = false end
 							end
 							
@@ -4032,35 +4112,12 @@ function Library:CreateWindow(config)
 					kbConfig = kbConfig or {}
 					local name = kbConfig.Name or "Keybind"
 					local flag = kbConfig.Flag or name
-					local default = kbConfig.Default or Enum.KeyCode.Unknown
+					local default = ParseKey(kbConfig.Default or Enum.KeyCode.Unknown)
 					local callback = kbConfig.Callback or function() end
 
 					local key = default
 					local listening = false
 					Library.Flags[flag] = key
-
-					local function FormatKey(k)
-						if not k or k == Enum.KeyCode.Unknown then return "-" end
-						if typeof(k) == "EnumItem" then
-							if k.EnumType == Enum.KeyCode then
-								local str = k.Name:upper()
-								if str == "RIGHTALT" then return "RALT" end
-								if str == "LEFTALT" then return "LALT" end
-								if str == "RIGHTCONTROL" then return "RCTRL" end
-								if str == "LEFTCONTROL" then return "LCTRL" end
-								if str == "RIGHTSHIFT" then return "RSHIFT" end
-								if str == "LEFTSHIFT" then return "LSHIFT" end
-								if str == "CAPSLOCK" then return "CAPS" end
-								return str
-							elseif k.EnumType == Enum.UserInputType then
-								if k == Enum.UserInputType.MouseButton1 then return "M1" end
-								if k == Enum.UserInputType.MouseButton2 then return "M2" end
-								if k == Enum.UserInputType.MouseButton3 then return "M3" end
-							end
-						end
-						local s = tostring(k):gsub("Enum%.KeyCode%.", ""):gsub("Enum%.UserInputType%.", ""):upper()
-						return (s ~= "" and s ~= "UNKNOWN") and s or "-"
-					end
 
 					local KeybindRow = Instance.new("Frame")
 					KeybindRow.Name = "KeybindRow_" .. name
@@ -4170,24 +4227,10 @@ function Library:CreateWindow(config)
 					GarbageCollector:AddConnection(kbConn)
 
 					local function SetKey(newKey)
-						if typeof(newKey) == "EnumItem" then
-							key = newKey
-						elseif type(newKey) == "string" then
-							local kStr = newKey:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
-							if Enum.KeyCode[kStr] then
-								key = Enum.KeyCode[kStr]
-							elseif Enum.UserInputType[kStr] then
-								key = Enum.UserInputType[kStr]
-							else
-								key = Enum.KeyCode.Unknown
-							end
-						elseif type(newKey) == "table" and newKey.Key then
-							if typeof(newKey.Key) == "EnumItem" then
-								key = newKey.Key
-							elseif type(newKey.Key) == "string" then
-								local kStr = newKey.Key:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "")
-								key = Enum.KeyCode[kStr] or Enum.UserInputType[kStr] or Enum.KeyCode.Unknown
-							end
+						if type(newKey) == "table" and newKey.Key then
+							key = ParseKey(newKey.Key)
+						else
+							key = ParseKey(newKey)
 						end
 						Library.Flags[flag] = key
 						UpdateKeyDisplay(FormatKey(key), false)
