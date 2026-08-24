@@ -3359,7 +3359,8 @@ function Library:CreateWindow(config)
 							Mode = mode,
 							Active = GetRuntimeActive(),
 							ParentToggleFlag = flag,
-							Name = name
+							Name = name,
+							Badge = (mode == "Button") and "button" or nil
 						}
 
 						attachedKeybindState = {
@@ -3478,6 +3479,7 @@ function Library:CreateWindow(config)
 							Library.Flags[kbFlag].Key = key
 							Library.Flags[kbFlag].ParentToggleFlag = flag
 							Library.Flags[kbFlag].Name = name
+							Library.Flags[kbFlag].Badge = (mode == "Button") and "button" or nil
 							TriggerCallback()
 							kbCallback(key, active, mode)
 							Library:NotifyKeybindChange()
